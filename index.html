@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1720">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ELG Flights">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>ELG Random Flights</title>
+<style>
+:root{--bg:#0f1720;--panel:#18232f;--fg:#e8eef4;--muted:#8aa0b4;--accent:#f5a524;--line:#2c3b4c;--live:#ff5a5a}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding:env(safe-area-inset-top) 0 calc(84px + env(safe-area-inset-bottom))}
+header{display:flex;align-items:center;gap:10px;padding:12px 16px}
+header img{width:30px;height:30px;border-radius:7px}
+header h1{font-size:17px;margin:0;flex:1}
+.live{display:flex;align-items:center;gap:6px;color:var(--live);font-weight:700;font-size:13px}
+.live .dot{width:9px;height:9px;border-radius:50%;background:var(--live);animation:p 1.6s infinite}
+@keyframes p{50%{opacity:.3}}
+.gear{background:none;border:0;color:var(--muted);font-size:21px;padding:4px 2px;cursor:pointer}
+.wrap{padding:0 16px}
+details{background:var(--panel);border-radius:14px;margin-bottom:12px}
+summary{padding:13px 16px;font-weight:600;cursor:pointer;list-style:none;display:flex;justify-content:space-between}
+summary::-webkit-details-marker{display:none}
+summary .n{color:var(--accent);font-weight:500;font-size:13px}
+.filters{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 16px}
+.filters .full{grid-column:1/-1}
+label{display:block;font-size:11px;color:var(--muted);margin:0 0 4px;text-transform:uppercase;letter-spacing:.04em}
+select,input,.pick{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;
+  padding:10px 11px;font:inherit;min-height:42px;appearance:none;-webkit-appearance:none}
+.pick{display:flex;align-items:center;gap:8px;text-align:left;cursor:pointer;overflow:hidden;white-space:nowrap}
+.pick span{overflow:hidden;text-overflow:ellipsis;flex:1}
+.clear{background:none;border:0;color:var(--muted);font-size:13px;padding:0;margin-top:2px;justify-self:start}
+.card{background:var(--panel);border-radius:16px;padding:16px}
+.kind{color:var(--muted);font-size:13px}
+.cs{font:700 34px/1.1 ui-monospace,Consolas,monospace;color:var(--accent);margin:6px 0 4px}
+.al .radio{color:var(--muted)}
+.route{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:start;margin:16px 0}
+.ap .icao{font:700 28px/1 ui-monospace,Consolas,monospace}
+.ap .nm{color:var(--muted);font-size:12px;margin-top:4px}
+.ap .ct{color:var(--muted);font-size:12px;margin-top:2px}
+.arrow{color:var(--muted);font-size:20px;padding-top:4px}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;border-top:1px solid var(--line);padding-top:14px}
+.k{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+.facts .v{font-size:15px;margin-top:2px}
+.livery{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
+.reg{font:700 24px ui-monospace,Consolas,monospace;color:var(--accent)}
+.regnote{color:var(--muted);font-size:12px;margin-bottom:8px}
+.photo{width:100%;aspect-ratio:3/2;background:#0b1118;border-radius:12px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;text-align:center;color:var(--muted);font-size:13px;padding:14px;overflow:hidden;cursor:pointer}
+.photo img{width:100%;height:100%;object-fit:cover;border-radius:12px;display:block}
+.photo.has{padding:0}
+.photo input{margin:10px 0 8px;text-align:center}
+.photo .row2{display:flex;gap:8px;width:100%}
+.photo .row2 button{flex:1}
+.credit{color:var(--muted);font-size:11px;margin-top:6px}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.btn{border-radius:12px;padding:13px;font:600 15px system-ui,sans-serif;background:var(--panel);color:var(--fg);
+  border:1px solid var(--line);text-align:center;cursor:pointer}
+.btn.pri{background:var(--accent);color:#1a1200;border:0}
+.status{color:var(--muted);font-size:12px;margin:14px 2px}
+.bar{position:fixed;left:0;right:0;bottom:0;padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+  background:linear-gradient(transparent,var(--bg) 30%)}
+.go{width:100%;border:0;border-radius:14px;padding:16px;background:var(--accent);color:#1a1200;font:800 17px system-ui,sans-serif;cursor:pointer}
+.go:disabled{opacity:.6}
+.go:active{transform:scale(.98)}
+.empty{color:var(--muted);text-align:center;padding:30px 10px}
+.spin{display:inline-block;width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;
+  animation:s 0.8s linear infinite;vertical-align:-4px;margin-right:8px}
+@keyframes s{to{transform:rotate(360deg)}}
+.modal{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;z-index:10;padding-top:env(safe-area-inset-top)}
+.modal.open{display:flex}
+.mhead{display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.mhead input{flex:1}
+.mhead button{background:none;border:0;color:var(--accent);font:600 15px system-ui,sans-serif}
+.mhint{color:var(--muted);font-size:12px;padding:6px 16px}
+.list{overflow:auto;flex:1}
+.row{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid #1c2733;cursor:pointer}
+.row:active{background:var(--panel)}
+.row span{flex:1}
+.sheet{padding:16px;overflow:auto}
+.sheet p{color:var(--muted);font-size:13px}
+.toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#26364a;color:var(--fg);padding:9px 14px;
+  border-radius:10px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90%;text-align:center}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <img src="icon.png" alt="">
+  <h1>ELG Random Flights</h1>
+  <div class="live" id="live" hidden><span class="dot"></span>LIVE</div>
+  <button class="gear" id="gear" aria-label="Settings">⚙</button>
+</header>
+<div class="wrap">
+  <details id="fbox">
+    <summary>Filters <span class="n" id="fcount"></span></summary>
+    <div class="filters">
+      <div class="full"><label>Source</label><select id="source"></select></div>
+      <div class="full"><label>Airline</label><button class="pick" data-k="airline"><span>All</span></button></div>
+      <div><label>Departure country</label><button class="pick" data-k="country"><span>All</span></button></div>
+      <div><label>Arrival country</label><button class="pick" data-k="arr_country"><span>All</span></button></div>
+      <div><label>Category</label><select id="category"><option value="">All</option></select></div>
+      <div><label>Aircraft model</label><button class="pick" data-k="model"><span>All</span></button></div>
+      <div><label>Min distance (NM)</label><input id="dmin" inputmode="numeric"></div>
+      <div><label>Max distance (NM)</label><input id="dmax" inputmode="numeric"></div>
+      <button class="clear" id="clear">Clear filters</button>
+    </div>
+  </details>
+
+  <div class="card" id="card"><div class="empty">Tap <b>RANDOM FLIGHT</b> to draw a real flight.</div></div>
+  <div class="status" id="status"></div>
+</div>
+
+<div class="bar"><button class="go" id="go">🎲 RANDOM FLIGHT</button></div>
+
+<div class="modal" id="modal">
+  <div class="mhead"><input id="q" placeholder="Search…" autocomplete="off"><button id="mclose">Close</button></div>
+  <div class="mhint" id="mhint"></div>
+  <div class="list" id="list"></div>
+</div>
+<div class="modal" id="settings">
+  <div class="mhead"><b style="flex:1;padding-top:10px">Settings</b><button id="sclose">Close</button></div>
+  <div class="sheet">
+    <label>Contact for aircraft photos (e-mail or website)</label>
+    <input id="contact" placeholder="you@example.com" autocomplete="email">
+    <p>Photos come from Planespotters.net, which is free but asks each app user for a contact.
+      It is only sent to Planespotters and stays on this phone. Leave empty to turn exact photos off.</p>
+    <button class="btn pri" id="ssave" style="width:100%">Save</button>
+    <p id="about"></p>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const norm = s => String(s||"").normalize("NFKD").replace(/[^\w]/g,"").toLowerCase();
+const {D, store} = ELG;
+let sel = {airline:null, country:null, arr_country:null, model:null}, labels = {}, photoToken = 0, current = null, busy = false;
+
+function toast(t){const el=$("#toast");el.textContent=t;el.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove("show"),1800)}
+function openUrl(u){ if(window.Native) Native.openUrl(u); else window.open(u,"_blank"); }
+function copyText(t){
+  if(window.Native){Native.copy(t);toast("Copied: "+t);return}
+  if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(t).then(()=>toast("Copied: "+t),()=>prompt("Copy:",t));return}
+  const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();
+  try{document.execCommand("copy");toast("Copied: "+t)}catch(e){prompt("Copy:",t)}ta.remove();
+}
+
+// ---- lists for the searchable pickers: [value, label, countryCode]
+const LISTS = {};
+function buildLists(){
+  const seen = new Set(Object.keys(D.routes).concat(Object.keys(D.fleet)));
+  LISTS.airline = [...seen].filter(c => D.airlines[c]).map(c => [c, `${D.airlines[c][0]} (${c})`, null])
+    .sort((a,b) => a[1].localeCompare(b[1]));
+  const ccs = new Set(Object.values(D.airports).map(a => a[2]).filter(Boolean));
+  LISTS.country = [...ccs].map(c => [c, ELG.countryName(c), c]).sort((a,b) => a[1].localeCompare(b[1]));
+  LISTS.arr_country = LISTS.country;
+  LISTS.model = Object.entries(D.types).map(([k,v]) => [k, `${v[0]} (${k})`, null]).sort((a,b) => a[1].localeCompare(b[1]));
+}
+const flag = cc => cc ? `<span>${ELG.flagEmoji(cc)}</span>` : "";
+
+function setPick(k, v, label, fl){
+  sel[k]=v; labels[k]=[label,fl];
+  const b=document.querySelector(`.pick[data-k="${k}"]`);
+  b.innerHTML = v ? `<span>${esc(label)}</span>${fl?`<b style="font-weight:400">${ELG.flagEmoji(fl)}</b>`:""}` : "<span>All</span>";
+  saveFilters();
+}
+const FIELDS = ["source","category","dmin","dmax"];
+function countFilters(){
+  let n=Object.values(sel).filter(Boolean).length;
+  for(const id of FIELDS.slice(1)) if($("#"+id).value) n++;
+  if($("#source").value!=="0") n++;
+  $("#fcount").textContent = n ? `${n} active` : "";
+}
+function saveFilters(){
+  const f={sel,labels};for(const id of FIELDS) f[id]=$("#"+id).value;
+  store.set("filters",f);countFilters();
+}
+function loadFilters(){
+  const f=store.get("filters");if(!f)return;
+  for(const id of FIELDS) if(f[id]!=null && f[id]!==undefined) $("#"+id).value=f[id];
+  if(!$("#source").value) $("#source").value="0";
+  for(const k in sel) if(f.sel&&f.sel[k]) setPick(k,f.sel[k],(f.labels[k]||[f.sel[k]])[0],(f.labels[k]||[])[1]);
+  countFilters();
+}
+function readFilters(){
+  const num = id => { const v = parseInt($("#" + id).value, 10); return isNaN(v) ? null : v; };
+  return {source: +$("#source").value, airline: sel.airline, dep: sel.country, arr: sel.arr_country,
+    model: sel.model, category: $("#category").value || null, dmin: num("dmin"), dmax: num("dmax")};
+}
+
+// ---- searchable list
+let curKey=null;
+function openPick(k){curKey=k;$("#q").value="";$("#modal").classList.add("open");fillList();setTimeout(()=>$("#q").focus(),50)}
+function fillList(){
+  const term=norm($("#q").value), items=LISTS[curKey];
+  const found = term ? items.filter(x=>norm(x[0])===term).concat(items.filter(x=>norm(x[0])!==term&&norm(x[1]).includes(term))) : items;
+  const shown=found.slice(0,150);
+  $("#mhint").textContent = term ? `${found.length} results${found.length>150?" (showing 150, keep typing)":""}` : "Type to search";
+  let html = term ? "" : `<div class="row" data-i="-1"><span>All</span></div>`;
+  html += shown.map((x,i)=>`<div class="row" data-i="${i}"><span>${esc(x[1])}</span>${flag(x[2])}</div>`).join("");
+  if(curKey==="model" && term && !shown.length) html=`<div class="row" data-free="1"><span>Use code “${esc($("#q").value.toUpperCase())}”</span></div>`;
+  $("#list").innerHTML=html; $("#list")._shown=shown;
+}
+$("#q").addEventListener("input",fillList);
+$("#q").addEventListener("keydown",e=>{if(e.key==="Enter"){const r=$("#list .row");if(r)r.click()}});
+$("#list").addEventListener("click",e=>{
+  const r=e.target.closest(".row");if(!r)return;
+  if(r.dataset.free){const c=$("#q").value.trim().toUpperCase();setPick(curKey,c,c)}
+  else{const i=+r.dataset.i;if(i<0)setPick(curKey,null);else{const x=$("#list")._shown[i];setPick(curKey,x[0],x[1],x[2])}}
+  $("#modal").classList.remove("open");
+});
+$("#mclose").onclick=()=>$("#modal").classList.remove("open");
+document.querySelectorAll(".pick").forEach(b=>b.onclick=()=>openPick(b.dataset.k));
+for(const id of FIELDS) $("#"+id).addEventListener("change",saveFilters);
+$("#clear").onclick=()=>{for(const k in sel)setPick(k,null);for(const id of FIELDS.slice(1))$("#"+id).value="";$("#source").value="0";saveFilters()};
+
+// ---- settings
+function openSettings(){$("#contact").value=store.get("contact")||"";$("#settings").classList.add("open")}
+$("#gear").onclick=openSettings;
+$("#sclose").onclick=()=>$("#settings").classList.remove("open");
+$("#ssave").onclick=()=>{const c=$("#contact").value.trim();store.set("contact",c);store.set("contact_asked",true);
+  $("#settings").classList.remove("open");toast(c?"Saved":"Exact photos turned off");if(current)loadPhoto(current)};
+// Android back button: close an open panel first
+window.onBack=()=>{for(const id of ["#modal","#settings"]) if($(id).classList.contains("open")){$(id).classList.remove("open");return true}
+  if($("#fbox").open){$("#fbox").open=false;return true} return false};
+
+// ---- status
+window.showStatus = function(){
+  const s=ELG.statesInfo(), nr=Object.values(D.routes).reduce((t,r)=>t+r[1],0);
+  $("#status").innerHTML = `${s.msg?esc(s.msg)+"<br>":""}${nr.toLocaleString("en-US")} current routes from ${Object.keys(D.routes).length.toLocaleString("en-US")} airlines (Virtual Radar, downloaded per airline) ${ELG.WEB ? " · live flights only in the PC and Android apps" : " · live flights from OpenSky Network"}`;
+  $("#live").hidden = !s.fresh;
+};
+
+// ---- draw
+async function draw(){
+  if(busy)return; busy=true;
+  $("#go").disabled=true;
+  $("#card").innerHTML=`<div class="empty"><span class="spin"></span>Looking for a real flight online…</div>`;
+  try{
+    const f=readFilters(); let fl=null;
+    fl = await ELG.pickFlight(f);
+    if(!fl){$("#card").innerHTML=`<div class="empty">No flights match these filters right now. Try loosening one${f.source===2?" or use Current routes":""}.</div>`;return}
+    render(fl);
+  }catch(e){
+    $("#card").innerHTML=`<div class="empty">Could not get flights: ${esc(e.message||e)}<br><br>Check the internet connection and try again.</div>`;
+  }finally{busy=false;$("#go").disabled=false;showStatus()}
+}
+function paxText(f){
+  const c=f.category;
+  if(c==="Militar") return "Not disclosed (military)";
+  if(c==="Carga"||!f.seats) return c==="Carga"?"Crew only (cargo)":"—";
+  if(c==="Comercial"||c==="Regional") return `~${f.pax} of ${f.seats} (estimated)`;
+  return `${f.pax} on board (estimated, up to ${f.seats})`;
+}
+function render(f){
+  current=f;
+  f.pax = f.seats ? (["Comercial","Regional"].includes(f.category) ? Math.floor(f.seats*(0.72+Math.random()*0.23)) : 1+Math.floor(Math.random()*f.seats)) : 0;
+  const al=f.airline;
+  const who = al ? `${al.name} (${al.icao})` : f.operator ? `Operator: ${f.operator}` : "Private flight / operator not identified";
+  const radio = al && al.callsign ? `${al.callsign} ${f.flightNumber}` : "";
+  const ap=a=>`<div class="ap"><div class="icao">${esc(a.icao)}</div><div class="nm">${esc(a.name)}</div>
+     <div class="ct">${esc((a.city?a.city+", ":"")+ELG.countryName(a.cc))} ${ELG.flagEmoji(a.cc)}</div></div>`;
+  const hdg = Math.round(ELG.bearing(f.dep.pos,f.arr.pos))%360;
+  const regNote = f.reg ? f.regNote : `no registration known for this ${f.type}`;
+  f.copy = `${f.callsign} ${f.dep.icao}-${f.arr.icao} ${f.type}${f.reg?" "+f.reg:""} ${ELG.fmtAlt(f.fl)}`;
+  const sb={orig:f.dep.icao,dest:f.arr.icao,type:f.type,fl:String(f.fl*100),pax:f.pax};
+  if(f.reg) sb.reg=f.reg;
+  if(al){sb.airline=al.icao;sb.fltnum=f.flightNumber}else sb.callsign=f.callsign;
+  f.simbrief="https://dispatch.simbrief.com/options/custom?"+new URLSearchParams(sb);
+  $("#card").innerHTML=`
+    <div class="kind">${esc((ELG.CAT_EN[f.category]||f.category)+"  ·  "+f.kind)}</div>
+    <div class="cs">${esc(f.callsign)}</div>
+    <div class="al">${esc(who)}${radio?` <span class="radio">· radio: "${esc(radio)}"</span>`:""}</div>
+    <div class="route">${ap(f.dep)}<div class="arrow">✈→</div>${ap(f.arr)}</div>
+    <div class="facts">
+      <div style="grid-column:1/-1"><div class="k">Aircraft</div><div class="v">${esc(f.model)} (${esc(f.type)})</div></div>
+      <div><div class="k">Distance</div><div class="v">${f.dist.toLocaleString("en-US")} NM</div></div>
+      <div><div class="k">Estimated time</div><div class="v">${esc(ELG.blockTime(f.dist,f.flMax))}</div></div>
+      <div><div class="k">Cruise altitude</div><div class="v">${esc(ELG.fmtAlt(f.fl))} (${esc(f.flNote)})</div></div>
+      <div><div class="k">Heading</div><div class="v">${String(hdg).padStart(3,"0")}°</div></div>
+      <div style="grid-column:1/-1"><div class="k">Passengers</div><div class="v">${esc(paxText(f))}</div></div>
+    </div>
+    <div class="livery">
+      <div class="k">Aircraft and livery</div>
+      <div class="reg">${esc(f.reg||"—")}</div><div class="regnote">${esc(regNote)}</div>
+      <div class="photo" id="photo">Looking for a photo…</div>
+      <div class="credit" id="credit"></div>
+    </div>
+    <div class="actions"><button class="btn" id="copy">Copy route</button><button class="btn" id="sb">Open in SimBrief</button></div>`;
+  $("#copy").onclick=()=>copyText(f.copy);
+  $("#sb").onclick=()=>openUrl(f.simbrief);
+  loadPhoto(f);
+}
+function googleQuery(f){
+  const who=f.airline?f.airline.name:(f.operator||"");
+  return [who, f.model.split(" · ")[0].split(" (")[0], f.reg||""].join(" ").replace(/\s+/g," ").trim();
+}
+async function loadPhoto(f){
+  const t=++photoToken, el=$("#photo");
+  el.classList.remove("has"); el.onclick=null; $("#credit").textContent="";
+  if(!ELG.WEB && !store.get("contact") && !store.get("contact_asked")){
+    el.innerHTML=`Aircraft photos come from Planespotters.net, which asks for a contact (e-mail or website). It stays on this phone.
+      <input id="c1" placeholder="you@example.com" autocomplete="email"><div class="row2"><button class="btn" id="c0">No thanks</button><button class="btn pri" id="c2">Save</button></div>`;
+    $("#c2").onclick=()=>{const c=$("#c1").value.trim();if(!c)return;store.set("contact",c);store.set("contact_asked",true);loadPhoto(f)};
+    $("#c0").onclick=()=>{store.set("contact_asked",true);loadPhoto(f)};
+    return;
+  }
+  el.innerHTML="<span><span class='spin'></span>Looking for a photo…</span>";
+  let m;
+  if(!ELG.WEB && !store.get("contact")) m={none:true,reason:"exact photos are off (no contact in settings)"};
+  else { try{m=await ELG.findPhoto(f)}catch(e){m={none:true,reason:"no connection"}} }
+  if(t!==photoToken)return; // another flight was drawn meanwhile
+  if(m.none||!m.src){
+    const q=googleQuery(f), url="https://www.google.com/search?tbm=isch&q="+encodeURIComponent(q);
+    el.innerHTML=`No exact photo of this aircraft (${esc(m.reason||"")}).<br><br>Tap to see photos on Google:<br>${esc(q)}`;
+    el.onclick=()=>openUrl(url);
+    $("#credit").textContent="Google search: photos may show another aircraft of the same model";
+    return;
+  }
+  el.classList.add("has");
+  el.innerHTML=`<img src="${esc(m.src)}" alt="Photo of ${esc(f.reg||f.model)}" referrerpolicy="no-referrer">`;
+  el.onclick=()=>openUrl(m.link||m.src);
+  $("#credit").textContent=m.credit+"  (tap to view)";
+}
+$("#go").onclick=draw;
+
+// ---- start
+$("#source").innerHTML=ELG.SOURCES.map((s,i)=>`<option value="${i}">${esc(s)}</option>`).join("");
+$("#category").innerHTML=`<option value="">All</option>`+Object.entries(ELG.CAT_EN).map(([v,l])=>`<option value="${esc(v)}">${esc(l)}</option>`).join("");
+if(ELG.WEB) $("#gear").hidden=true;
+buildLists(); loadFilters();
+if(+$("#source").value>=ELG.SOURCES.length) $("#source").value="0";
+showStatus();
+$("#about").textContent="Data: Virtual Radar Server standing data, OpenSky Network, adsbdb, hexdb.io, Wikidata, Planespotters.net, Wikimedia Commons. Historical flights are only in the PC version.";
+ELG.loadRadioCallsigns();
+ELG.liveStates().catch(()=>{});
+setInterval(()=>{ if(document.visibilityState==="visible") showStatus(); },60000);
+</script>
+</body>
+</html>
