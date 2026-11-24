@@ -84,6 +84,11 @@ select,input,.pick{width:100%;background:var(--bg);color:var(--fg);border:1px so
 .row{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid #1c2733;cursor:pointer}
 .row:active{background:var(--panel)}
 .row span{flex:1}
+.row .ck{flex:none;width:22px;height:22px;border:2px solid var(--line);border-radius:6px;display:flex;align-items:center;
+  justify-content:center;font-size:15px;color:#1a1200}
+.row.on .ck{background:var(--accent);border-color:var(--accent)}
+.mfoot{padding:10px 16px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+.mfoot button{width:100%}
 .sheet{padding:16px;overflow:auto}
 .sheet p{color:var(--muted);font-size:13px}
 .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#26364a;color:var(--fg);padding:9px 14px;
@@ -102,14 +107,16 @@ select,input,.pick{width:100%;background:var(--bg);color:var(--fg);border:1px so
   <details id="fbox">
     <summary>Filters <span class="n" id="fcount"></span></summary>
     <div class="filters">
-      <div class="full"><label>Source</label><select id="source"></select></div>
+      <div class="full"><label>Source</label><button class="pick" data-k="source"><span>All</span></button></div>
       <div class="full"><label>Airline</label><button class="pick" data-k="airline"><span>All</span></button></div>
       <div><label>Departure country</label><button class="pick" data-k="country"><span>All</span></button></div>
       <div><label>Arrival country</label><button class="pick" data-k="arr_country"><span>All</span></button></div>
-      <div><label>Category</label><select id="category"><option value="">All</option></select></div>
+      <div><label>Category</label><button class="pick" data-k="category"><span>All</span></button></div>
       <div><label>Aircraft model</label><button class="pick" data-k="model"><span>All</span></button></div>
-      <div><label>Min distance (NM)</label><input id="dmin" inputmode="numeric"></div>
-      <div><label>Max distance (NM)</label><input id="dmax" inputmode="numeric"></div>
+      <div><label>Min dist. (NM)</label><input id="dmin" inputmode="numeric"></div>
+      <div><label>Max dist. (NM)</label><input id="dmax" inputmode="numeric"></div>
+      <div><label>DEP ICAO</label><input id="dep_icao" placeholder="e.g. SBGR SBKP" autocapitalize="characters" autocomplete="off"></div>
+      <div><label>ARR ICAO</label><input id="arr_icao" placeholder="e.g. KJFK" autocapitalize="characters" autocomplete="off"></div>
       <button class="clear" id="clear">Clear filters</button>
     </div>
   </details>
@@ -124,6 +131,7 @@ select,input,.pick{width:100%;background:var(--bg);color:var(--fg);border:1px so
   <div class="mhead"><input id="q" placeholder="Search…" autocomplete="off"><button id="mclose">Close</button></div>
   <div class="mhint" id="mhint"></div>
   <div class="list" id="list"></div>
+  <div class="mfoot"><button class="btn pri" id="mdone">Done</button></div>
 </div>
 <div class="modal" id="settings">
   <div class="mhead"><b style="flex:1;padding-top:10px">Settings</b><button id="sclose">Close</button></div>
@@ -145,7 +153,10 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const norm = s => String(s||"").normalize("NFKD").replace(/[^\w]/g,"").toLowerCase();
 const {D, store} = ELG;
-let sel = {airline:null, country:null, arr_country:null, model:null}, labels = {}, photoToken = 0, current = null, busy = false;
+// Each list filter holds the ticked values (check boxes); nothing ticked = All.
+const KEYS = ["source","airline","country","arr_country","category","model"];
+let sel = {}, labels = {}, photoToken = 0, current = null, busy = false;
+for(const k of KEYS){ sel[k]=[]; labels[k]={}; }
 
 function toast(t){const el=$("#toast");el.textContent=t;el.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove("show"),1800)}
 function openUrl(u){ if(window.Native) Native.openUrl(u); else window.open(u,"_blank"); }
@@ -156,7 +167,7 @@ function copyText(t){
   try{document.execCommand("copy");toast("Copied: "+t)}catch(e){prompt("Copy:",t)}ta.remove();
 }
 
-// ---- lists for the searchable pickers: [value, label, countryCode]
+// ---- lists for the pickers: [value, label, countryCode]
 const LISTS = {};
 function buildLists(){
   const seen = new Set(Object.keys(D.routes).concat(Object.keys(D.fleet)));
@@ -166,64 +177,88 @@ function buildLists(){
   LISTS.country = [...ccs].map(c => [c, ELG.countryName(c), c]).sort((a,b) => a[1].localeCompare(b[1]));
   LISTS.arr_country = LISTS.country;
   LISTS.model = Object.entries(D.types).map(([k,v]) => [k, `${v[0]} (${k})`, null]).sort((a,b) => a[1].localeCompare(b[1]));
+  LISTS.source = ELG.SOURCES.slice(1).map((s,i) => [i+1, s, null]);
+  LISTS.category = Object.entries(ELG.CAT_EN).map(([v,l]) => [v, l, null]);
 }
+const SEARCH = {airline:1, country:1, arr_country:1, model:1};
 const flag = cc => cc ? `<span>${ELG.flagEmoji(cc)}</span>` : "";
+function labelOf(k, v){ return labels[k][v] || (LISTS[k].find(x=>x[0]===v)||[v,String(v),null]).slice(1); }
 
-function setPick(k, v, label, fl){
-  sel[k]=v; labels[k]=[label,fl];
-  const b=document.querySelector(`.pick[data-k="${k}"]`);
-  b.innerHTML = v ? `<span>${esc(label)}</span>${fl?`<b style="font-weight:400">${ELG.flagEmoji(fl)}</b>`:""}` : "<span>All</span>";
-  saveFilters();
+function showPick(k){
+  const b=document.querySelector(`.pick[data-k="${k}"]`), v=sel[k];
+  if(!v.length){ b.innerHTML="<span>All</span>"; return; }
+  if(v.length===1){ const [l,fl]=labelOf(k,v[0]); b.innerHTML=`<span>${esc(l)}</span>${fl?`<b style="font-weight:400">${ELG.flagEmoji(fl)}</b>`:""}`; return; }
+  b.innerHTML=`<span>${v.length} selected: ${esc(v.map(x=>labelOf(k,x)[0]).join(", "))}</span>`;
 }
-const FIELDS = ["source","category","dmin","dmax"];
+function toggle(k, v, label, fl){
+  const i=sel[k].indexOf(v);
+  if(i>=0) sel[k].splice(i,1); else { sel[k].push(v); if(label) labels[k][v]=[label,fl]; }
+  showPick(k); saveFilters();
+}
+const FIELDS = ["dmin","dmax","dep_icao","arr_icao"];
 function countFilters(){
-  let n=Object.values(sel).filter(Boolean).length;
-  for(const id of FIELDS.slice(1)) if($("#"+id).value) n++;
-  if($("#source").value!=="0") n++;
+  let n=KEYS.filter(k=>sel[k].length).length;
+  for(const id of FIELDS) if($("#"+id).value.trim()) n++;
   $("#fcount").textContent = n ? `${n} active` : "";
 }
 function saveFilters(){
-  const f={sel,labels};for(const id of FIELDS) f[id]=$("#"+id).value;
+  const f={sel,labels,v:2};for(const id of FIELDS) f[id]=$("#"+id).value;
   store.set("filters",f);countFilters();
 }
 function loadFilters(){
-  const f=store.get("filters");if(!f)return;
-  for(const id of FIELDS) if(f[id]!=null && f[id]!==undefined) $("#"+id).value=f[id];
-  if(!$("#source").value) $("#source").value="0";
-  for(const k in sel) if(f.sel&&f.sel[k]) setPick(k,f.sel[k],(f.labels[k]||[f.sel[k]])[0],(f.labels[k]||[])[1]);
-  countFilters();
+  const f=store.get("filters");
+  if(f && f.v===2){
+    for(const id of FIELDS) if(f[id]!=null) $("#"+id).value=f[id];
+    for(const k of KEYS) if(Array.isArray(f.sel[k])){
+      sel[k]=f.sel[k].filter(v=>k!=="source"||LISTS.source.some(x=>x[0]===v)); labels[k]=f.labels[k]||{};
+    }
+  }
+  KEYS.forEach(showPick); countFilters();
 }
+const codes = id => $("#"+id).value.toUpperCase().split(/[\s,;]+/).filter(Boolean);
 function readFilters(){
   const num = id => { const v = parseInt($("#" + id).value, 10); return isNaN(v) ? null : v; };
-  return {source: +$("#source").value, airline: sel.airline, dep: sel.country, arr: sel.arr_country,
-    model: sel.model, category: $("#category").value || null, dmin: num("dmin"), dmax: num("dmax")};
+  return {source: sel.source.slice(), airline: sel.airline.slice(), dep: sel.country.slice(), arr: sel.arr_country.slice(),
+    model: sel.model.slice(), category: sel.category.slice(), dmin: num("dmin"), dmax: num("dmax"),
+    depIcao: codes("dep_icao"), arrIcao: codes("arr_icao")};
 }
 
-// ---- searchable list
+// ---- check-box list (with search for the long ones)
 let curKey=null;
-function openPick(k){curKey=k;$("#q").value="";$("#modal").classList.add("open");fillList();setTimeout(()=>$("#q").focus(),50)}
+function openPick(k){
+  curKey=k;$("#q").value="";$("#q").style.display=SEARCH[k]?"":"none";
+  $("#modal").classList.add("open");fillList();if(SEARCH[k])setTimeout(()=>$("#q").focus(),50);
+}
 function fillList(){
-  const term=norm($("#q").value), items=LISTS[curKey];
-  const found = term ? items.filter(x=>norm(x[0])===term).concat(items.filter(x=>norm(x[0])!==term&&norm(x[1]).includes(term))) : items;
+  const term=norm($("#q").value), items=LISTS[curKey], on=sel[curKey];
+  let found;
+  if(term) found=items.filter(x=>norm(x[0])===term).concat(items.filter(x=>norm(x[0])!==term&&norm(x[1]).includes(term)));
+  else found=items.filter(x=>on.includes(x[0])).concat(items.filter(x=>!on.includes(x[0]))); // ticked ones first
   const shown=found.slice(0,150);
-  $("#mhint").textContent = term ? `${found.length} results${found.length>150?" (showing 150, keep typing)":""}` : "Type to search";
-  let html = term ? "" : `<div class="row" data-i="-1"><span>All</span></div>`;
-  html += shown.map((x,i)=>`<div class="row" data-i="${i}"><span>${esc(x[1])}</span>${flag(x[2])}</div>`).join("");
-  if(curKey==="model" && term && !shown.length) html=`<div class="row" data-free="1"><span>Use code “${esc($("#q").value.toUpperCase())}”</span></div>`;
+  const ticked = on.length ? `${on.length} ticked · ` : "";
+  $("#mhint").textContent = ticked + (term ? `${found.length} results${found.length>150?" (showing 150, keep typing)":""}`
+    : SEARCH[curKey] ? "Type to search · tap to tick one or more" : "Tap to tick one or more");
+  let html = term ? "" : `<div class="row" data-i="-1"><span>✕  All (untick all)</span></div>`;
+  html += shown.map((x,i)=>`<div class="row${on.includes(x[0])?" on":""}" data-i="${i}"><b class="ck">${on.includes(x[0])?"✓":""}</b><span>${esc(x[1])}</span>${flag(x[2])}</div>`).join("");
+  if(curKey==="model" && term && !shown.length) html=`<div class="row" data-free="1"><span>Add code “${esc($("#q").value.toUpperCase())}”</span></div>`;
   $("#list").innerHTML=html; $("#list")._shown=shown;
 }
 $("#q").addEventListener("input",fillList);
-$("#q").addEventListener("keydown",e=>{if(e.key==="Enter"){const r=$("#list .row");if(r)r.click()}});
+$("#q").addEventListener("keydown",e=>{if(e.key==="Enter"){const r=$("#list .row[data-i='0'],#list .row[data-free]");if(r)r.click()}});
 $("#list").addEventListener("click",e=>{
   const r=e.target.closest(".row");if(!r)return;
-  if(r.dataset.free){const c=$("#q").value.trim().toUpperCase();setPick(curKey,c,c)}
-  else{const i=+r.dataset.i;if(i<0)setPick(curKey,null);else{const x=$("#list")._shown[i];setPick(curKey,x[0],x[1],x[2])}}
-  $("#modal").classList.remove("open");
+  if(r.dataset.free){const c=$("#q").value.trim().toUpperCase();if(!sel[curKey].includes(c))toggle(curKey,c,c);$("#q").value="";fillList();return}
+  const i=+r.dataset.i;
+  if(i<0){sel[curKey]=[];showPick(curKey);saveFilters();fillList();return}
+  const x=$("#list")._shown[i];toggle(curKey,x[0],x[1],x[2]);
+  const on=sel[curKey].includes(x[0]);r.classList.toggle("on",on);r.querySelector(".ck").textContent=on?"✓":"";
+  const n=sel[curKey].length;$("#mhint").textContent=(n?`${n} ticked · `:"")+(SEARCH[curKey]?"Type to search · tap to tick one or more":"Tap to tick one or more");
 });
-$("#mclose").onclick=()=>$("#modal").classList.remove("open");
+const closePick=()=>$("#modal").classList.remove("open");
+$("#mclose").onclick=closePick; $("#mdone").onclick=closePick;
 document.querySelectorAll(".pick").forEach(b=>b.onclick=()=>openPick(b.dataset.k));
 for(const id of FIELDS) $("#"+id).addEventListener("change",saveFilters);
-$("#clear").onclick=()=>{for(const k in sel)setPick(k,null);for(const id of FIELDS.slice(1))$("#"+id).value="";$("#source").value="0";saveFilters()};
+$("#clear").onclick=()=>{for(const k of KEYS){sel[k]=[];showPick(k)}for(const id of FIELDS)$("#"+id).value="";saveFilters()};
 
 // ---- settings
 function openSettings(){$("#contact").value=store.get("contact")||"";$("#settings").classList.add("open")}
@@ -250,7 +285,7 @@ async function draw(){
   try{
     const f=readFilters(); let fl=null;
     fl = await ELG.pickFlight(f);
-    if(!fl){$("#card").innerHTML=`<div class="empty">No flights match these filters right now. Try loosening one${f.source===2?" or use Current routes":""}.</div>`;return}
+    if(!fl){$("#card").innerHTML=`<div class="empty">No flights match these filters right now. Try loosening one.</div>`;return}
     render(fl);
   }catch(e){
     $("#card").innerHTML=`<div class="empty">Could not get flights: ${esc(e.message||e)}<br><br>Check the internet connection and try again.</div>`;
@@ -336,11 +371,8 @@ async function loadPhoto(f){
 $("#go").onclick=draw;
 
 // ---- start
-$("#source").innerHTML=ELG.SOURCES.map((s,i)=>`<option value="${i}">${esc(s)}</option>`).join("");
-$("#category").innerHTML=`<option value="">All</option>`+Object.entries(ELG.CAT_EN).map(([v,l])=>`<option value="${esc(v)}">${esc(l)}</option>`).join("");
 if(ELG.WEB) $("#gear").hidden=true;
 buildLists(); loadFilters();
-if(+$("#source").value>=ELG.SOURCES.length) $("#source").value="0";
 showStatus();
 $("#about").textContent="Data: Virtual Radar Server standing data, OpenSky Network, adsbdb, hexdb.io, Wikidata, Planespotters.net, Wikimedia Commons. Historical flights are only in the PC version.";
 ELG.loadRadioCallsigns();

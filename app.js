@@ -217,20 +217,35 @@ async function aircraftFor(hex) {
 }
 
 // ------------------------------------------------------------ filters
+// Every list filter holds the ticked values; an empty list means "all".
+const has = (list, v) => !list.length || list.includes(v);
 function legOK(f, d, a, dist) {
-  return (!f.dep || d.cc === f.dep) && (!f.arr || a.cc === f.arr) &&
+  return has(f.dep, d.cc) && has(f.arr, a.cc) && has(f.depIcao, d.icao) && has(f.arrIcao, a.icao) &&
     (f.dmin == null || dist >= f.dmin) && (f.dmax == null || dist <= f.dmax);
 }
-const typeOK = (f, t) => !f.model || t === f.model;
+const typeOK = (f, t) => has(f.model, t);
+const catOK = (f, cat) => has(f.category, cat);
+const icaoCountries = list => [...new Set(list.map(i => D.airports[i] ? D.airports[i][2] : "??"))];
+function prepFilters(f) {
+  f = Object.assign({airline: [], dep: [], arr: [], model: [], category: [], source: [], depIcao: [], arrIcao: []}, f);
+  // an ICAO filter also limits the countries the airline must fly from / to
+  f.depCC = f.depIcao.length ? icaoCountries(f.depIcao).filter(c => has(f.dep, c)) : f.dep;
+  f.arrCC = f.arrIcao.length ? icaoCountries(f.arrIcao).filter(c => has(f.arr, c)) : f.arr;
+  return f;
+}
+const PAX_CATS = ["Comercial", "Regional", "Carga"];
 function airlineMayMatch(code, f) {
   const r = D.routes[code];
   if (!r) return false;
-  if (f.airline && code !== f.airline) return false;
-  if (f.dep && !r[2].includes(f.dep)) return false;
-  if (f.arr && !r[3].includes(f.arr)) return false;
-  if (f.category === "Carga" && !CARGO.has(code)) return false;
-  if (f.category && ["Executiva", "Aviação geral", "Helicóptero", "Militar"].includes(f.category)) return false;
-  if (f.model && !(D.fleet[code] && D.fleet[code][f.model])) return false;
+  if (!has(f.airline, code)) return false;
+  if (f.depCC.length && !f.depCC.some(c => r[2].includes(c))) return false;
+  if (f.arrCC.length && !f.arrCC.some(c => r[3].includes(c))) return false;
+  if (f.category.length) {
+    const cargoOK = f.category.includes("Carga") && CARGO.has(code);
+    const paxOK = f.category.some(c => c === "Comercial" || c === "Regional");
+    if (!cargoOK && !paxOK) return false;
+  }
+  if (f.model.length && !(D.fleet[code] && f.model.some(m => D.fleet[code][m]))) return false;
   return true;
 }
 // country codes are stored as concatenated pairs ("BRUSPT"): check on even positions only
@@ -244,10 +259,10 @@ function typeForRoute(code, dist, f, cargo) {
   if (!fl) return null;
   const cands = [];
   for (const [t, e] of Object.entries(fl)) {
-    if (f.model && t !== f.model) continue;
+    if (!typeOK(f, t)) continue;
     const tcat = typeInfo(t)[1];
-    if (!["Comercial", "Regional", "Carga"].includes(tcat)) continue;
-    if ((f.category === "Comercial" || f.category === "Regional") && tcat !== f.category) continue;
+    if (!PAX_CATS.includes(tcat)) continue;
+    if (f.category.length && !f.category.includes(tcat) && !(cargo && f.category.includes("Carga"))) continue;
     const rng = typeRange(t, tcat);
     if (dist > rng) continue;
     let w = e[0] * (dist < 1500 && rng > 7000 ? 0.1 : 1);
@@ -257,13 +272,18 @@ function typeForRoute(code, dist, f, cargo) {
   return cands.length ? weighted(cands) : null;
 }
 async function drawCurrent(f) {
+  if (f.source.length && !f.source.includes(SRC_CURRENT)) return null;
   const codes = Object.keys(D.routes).filter(c => airlineMayMatch(c, f));
   if (!codes.length) return null;
   // with a country filter, an airline that flies to many countries has only a share of its routes there
-  const share = c => (f.dep ? D.routes[c][2].s.length / 2 : 1) * (f.arr ? D.routes[c][3].s.length / 2 : 1);
+  const share = c => (f.depCC.length ? D.routes[c][2].s.length / 2 / f.depCC.length : 1) *
+    (f.arrCC.length ? D.routes[c][3].s.length / 2 / f.arrCC.length : 1);
   const pool = codes.map(c => [c, D.routes[c][1] / share(c)]);
-  for (let attempt = 0; attempt < 8; attempt++) {
+  // narrow filters (ICAO codes) need more airlines to be checked; each airline is checked once
+  const attempts = f.depIcao.length || f.arrIcao.length ? 25 : 8;
+  for (let attempt = 0; attempt < attempts && pool.length; attempt++) {
     const code = weighted(pool), files = filesOf(code);
+    pool.splice(pool.findIndex(p => p[0] === code), 1);
     const rows = await routeFile(code, pickOne(files));
     const cargo = CARGO.has(code);
     const legs = [];
@@ -291,7 +311,7 @@ async function drawCurrent(f) {
       }
       const [name, tcat, seats, flMin, flMax] = typeInfo(t);
       const cat = cargo ? "Carga" : tcat;
-      if (f.category && cat !== f.category) continue;
+      if (!catOK(f, cat)) continue;
       return {
         kind: `Real current route (Virtual Radar / adsb.lol)${n > 1 ? `  ·  leg ${i + 1} of ${n}` : ""}`,
         category: cat, callsign: cs, flightNumber: num || cs.slice(3), airline: airline(code), operator: null,
@@ -329,14 +349,15 @@ async function routeForLive(s, budget) {
   return best;
 }
 async function drawLive(f) {
+  if (f.source.length && !f.source.includes(SRC_LIVE)) return null;
   const states = await liveStates();
   let cands = states.filter(s => {
     const code = s.cs.slice(0, 3);
     if (!/^[A-Z]{3}\d/.test(s.cs)) return false;
     if (D.routes[code]) return airlineMayMatch(code, f);
-    return !f.airline && !f.dep && !f.arr && !!D.airlines[code]; // routes via adsbdb
+    // routes via adsbdb
+    return has(f.airline, code) && !f.depCC.length && !f.arrCC.length && !!D.airlines[code];
   });
-  if (f.airline) cands = cands.filter(s => s.cs.startsWith(f.airline));
   const budget = {adsbdb: 3};
   for (let tries = 0; tries < 10 && cands.length; tries++) {
     const s = cands.splice(Math.floor(Math.random() * cands.length), 1)[0];
@@ -347,7 +368,7 @@ async function drawLive(f) {
     const code = s.cs.slice(0, 3), cargo = CARGO.has(code);
     const [name, tcat, seats, flMin, flMax] = typeInfo(ac.type);
     const cat = cargo ? "Carga" : tcat;
-    if (f.category && cat !== f.category) continue;
+    if (!catOK(f, cat)) continue;
     const altFt = (s.alt || 0) * 3.28084;
     const cruising = altFt > 10000 && Math.abs(s.vrate || 0) < 2.5;
     return {
@@ -482,8 +503,8 @@ async function findPhoto(fl) {
 
 // ------------------------------------------------------------ draw
 async function pickFlight(f) {
-  const order = WEB || f.source === SRC_CURRENT ? [drawCurrent] : f.source === SRC_LIVE ? [drawLive]
-    : (Math.random() < 0.5 ? [drawCurrent, drawLive] : [drawLive, drawCurrent]);
+  f = prepFilters(f);
+  const order = WEB ? [drawCurrent] : (Math.random() < 0.5 ? [drawCurrent, drawLive] : [drawLive, drawCurrent]);
   let lastErr = null;
   for (const fn of order) {
     try { const fl = await fn(f); if (fl) return fl; }
